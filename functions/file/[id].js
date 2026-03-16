@@ -67,60 +67,65 @@ export async function onRequest(context) {
     return handleOptions();
   }
 
-  let fileId = params.id;
-  if (!fileId) {
-    return errorResponse('Missing file id', 400);
-  }
-
-  const signedTelegramMeta = await parseSignedTelegramFileId(fileId, env);
-  if (signedTelegramMeta) {
-    return handleSignedTelegramFile(context, signedTelegramMeta);
-  }
-
-  const recordResult = await getRecordWithKey(env, fileId);
-  const record = recordResult?.record;
-  const kvKey = recordResult?.kvKey || fileId;
-
-  if (env.img_url && !record?.metadata) {
-    return errorResponse('File not found', 404);
-  }
-
-  let shareAccess = null;
-  if (record?.metadata) {
-    shareAccess = await verifyShareAccess(context, record.metadata, kvKey);
-    if (shareAccess?.response) {
-      return shareAccess.response;
+  try {
+    let fileId = params.id;
+    if (!fileId) {
+      return errorResponse('Missing file id', 400);
     }
-  }
 
-  const storageType = inferStorageType(fileId, record?.metadata || {});
-  let response;
-  if (storageType === 'r2') {
-    response = await handleR2File(context, record?.metadata?.r2Key || fileId, record);
-  } else if (storageType === 's3') {
-    response = await handleS3File(context, fileId, record);
-  } else if (storageType === 'discord') {
-    response = await handleDiscordFile(context, fileId, record);
-  } else if (storageType === 'huggingface') {
-    response = await handleHFFile(context, fileId, record);
-  } else if (storageType === 'webdav') {
-    response = await handleWebDAVFile(context, fileId, record);
-  } else if (storageType === 'github') {
-    response = await handleGitHubFile(context, fileId, record);
-  } else {
-    response = await handleTelegramFile(context, fileId, record);
-  }
+    const signedTelegramMeta = await parseSignedTelegramFileId(fileId, env);
+    if (signedTelegramMeta) {
+      return handleSignedTelegramFile(context, signedTelegramMeta);
+    }
 
-  if (shareAccess?.trackDownload && shouldCountAsDownload(request.method, response)) {
-    const updatePromise = incrementShareDownloadCount(env, shareAccess.kvKey, shareAccess.metadata);
-    if (typeof context.waitUntil === 'function') {
-      context.waitUntil(updatePromise.catch(() => {}));
+    const recordResult = await getRecordWithKey(env, fileId);
+    const record = recordResult?.record;
+    const kvKey = recordResult?.kvKey || fileId;
+
+    if (env.img_url && !record?.metadata) {
+      return errorResponse('File not found', 404);
+    }
+
+    let shareAccess = null;
+    if (record?.metadata) {
+      shareAccess = await verifyShareAccess(context, record.metadata, kvKey);
+      if (shareAccess?.response) {
+        return shareAccess.response;
+      }
+    }
+
+    const storageType = inferStorageType(fileId, record?.metadata || {});
+    let response;
+    if (storageType === 'r2') {
+      response = await handleR2File(context, record?.metadata?.r2Key || fileId, record);
+    } else if (storageType === 's3') {
+      response = await handleS3File(context, fileId, record);
+    } else if (storageType === 'discord') {
+      response = await handleDiscordFile(context, fileId, record);
+    } else if (storageType === 'huggingface') {
+      response = await handleHFFile(context, fileId, record);
+    } else if (storageType === 'webdav') {
+      response = await handleWebDAVFile(context, fileId, record);
+    } else if (storageType === 'github') {
+      response = await handleGitHubFile(context, fileId, record);
     } else {
-      updatePromise.catch(() => {});
+      response = await handleTelegramFile(context, fileId, record);
     }
-  }
 
-  return response;
+    if (shareAccess?.trackDownload && shouldCountAsDownload(request.method, response)) {
+      const updatePromise = incrementShareDownloadCount(env, shareAccess.kvKey, shareAccess.metadata);
+      if (typeof context.waitUntil === 'function') {
+        context.waitUntil(updatePromise.catch(() => {}));
+      } else {
+        updatePromise.catch(() => {});
+      }
+    }
+
+    return response;
+  } catch (error) {
+    console.error('file route error:', error);
+    return errorResponse(`File proxy error: ${error?.message || 'Unknown error'}`, 502);
+  }
 }
 
 function inferStorageType(name, metadata = {}) {
