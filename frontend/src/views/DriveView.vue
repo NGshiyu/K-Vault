@@ -49,6 +49,14 @@
       <p class="muted">Current storage: {{ currentStorageLabel }} | Folder: /{{ currentPath || '' }}</p>
     </section>
 
+    <ImageProcessingPanel
+      v-model="imageProcessing"
+      :active-format="activeImageFormat"
+      :format-options="imageProcessingFormatOptions"
+      :summary="imageProcessingSummary"
+      @select-format="selectImageFormat"
+    />
+
     <form class="url-row" @submit.prevent="uploadUrl">
       <input v-model.trim="urlInput" placeholder="https://example.com/file.zip" />
       <button class="btn" :disabled="urlUploading || !urlInput">
@@ -66,6 +74,7 @@
           </div>
           <p class="muted" v-if="item.relativePath">Relative path: {{ item.relativePath }}</p>
           <p class="muted">Target folder: /{{ item.targetFolderPath || '' }}</p>
+          <p v-if="item.optimizationNote" class="muted">{{ item.optimizationNote }}</p>
           <div class="progress-track">
             <span class="progress-fill" :style="{ width: `${item.progress}%` }"></span>
           </div>
@@ -233,6 +242,8 @@ import {
   renameFile,
   signShareLink,
 } from '../api/drive';
+import ImageProcessingPanel from '../components/ImageProcessingPanel.vue';
+import { useImageProcessing } from '../composables/useImageProcessing';
 import { STORAGE_TYPES, getStorageLabel, storageEnabledFromStatus } from '../config/storage-definitions';
 
 const picker = ref(null);
@@ -261,6 +272,17 @@ const error = ref('');
 const DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024;
 const SMALL_FILE_THRESHOLD = 20 * 1024 * 1024;
 const V2_ACCEPT = 'application/vnd.kvault.v2+json, application/json;q=0.9, text/plain;q=0.5, */*;q=0.1';
+
+const {
+  imageProcessing,
+  activeImageFormat,
+  imageProcessingFormatOptions,
+  imageProcessingSummary,
+  refreshImageProcessingSupport,
+  selectImageFormat,
+  getImageProcessingSnapshot,
+  prepareQueuedImage,
+} = useImageProcessing({ formatSize });
 
 const selectedSet = computed(() => new Set(selectedFileIds.value));
 const allSelected = computed(() => files.value.length > 0 && selectedFileIds.value.length === files.value.length);
@@ -316,6 +338,7 @@ const flatTreeNodes = computed(() => {
 });
 
 onMounted(async () => {
+  await refreshImageProcessingSupport();
   await refreshStatus();
   await refreshAll();
 });
@@ -508,6 +531,9 @@ function enqueueFiles(list) {
       error: '',
       cancelled: false,
       xhr: null,
+      imageProcessingOptions: getImageProcessingSnapshot(),
+      imageProcessingPrepared: false,
+      optimizationNote: '',
     });
   }
   void processQueue();
@@ -527,11 +553,13 @@ async function processQueue() {
         continue;
       }
 
-      item.status = 'uploading';
       item.error = '';
       item.cancelled = false;
 
       try {
+        await prepareQueuedImage(item);
+        item.status = 'uploading';
+
         if (item.file.size > SMALL_FILE_THRESHOLD) {
           await chunkUpload(item);
         } else {

@@ -79,6 +79,14 @@
       <p v-if="folderLoadError" class="error">{{ folderLoadError }}</p>
     </section>
 
+    <ImageProcessingPanel
+      v-model="imageProcessing"
+      :active-format="activeImageFormat"
+      :format-options="imageProcessingFormatOptions"
+      :summary="imageProcessingSummary"
+      @select-format="selectImageFormat"
+    />
+
     <form class="url-row" @submit.prevent="uploadUrl">
       <input v-model.trim="urlInput" placeholder="https://example.com/file.png" />
       <button class="btn" :disabled="urlUploading || !urlInput">
@@ -95,6 +103,7 @@
             <span>{{ formatSize(item.file.size) }}</span>
           </div>
           <p class="muted queue-target">{{ item.storageLabel }} · {{ formatFolderPath(item.targetFolderPath) }}</p>
+          <p v-if="item.optimizationNote" class="muted queue-target">{{ item.optimizationNote }}</p>
           <div class="progress-track">
             <span class="progress-fill" :style="{ width: `${item.progress}%` }"></span>
           </div>
@@ -130,6 +139,8 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { apiFetch, getApiBase } from '../api/client';
 import { getDriveTree } from '../api/drive';
+import ImageProcessingPanel from '../components/ImageProcessingPanel.vue';
+import { useImageProcessing } from '../composables/useImageProcessing';
 import { STORAGE_TYPES, getStorageLabel, storageEnabledFromStatus } from '../config/storage-definitions';
 
 const picker = ref(null);
@@ -152,6 +163,17 @@ const DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024;
 const SMALL_FILE_THRESHOLD = 20 * 1024 * 1024;
 const V2_ACCEPT = 'application/vnd.kvault.v2+json, application/json;q=0.9, text/plain;q=0.5, */*;q=0.1';
 let folderTreeRequestId = 0;
+
+const {
+  imageProcessing,
+  activeImageFormat,
+  imageProcessingFormatOptions,
+  imageProcessingSummary,
+  refreshImageProcessingSupport,
+  selectImageFormat,
+  getImageProcessingSnapshot,
+  prepareQueuedImage,
+} = useImageProcessing({ formatSize });
 
 const modes = computed(() => {
   return STORAGE_TYPES.map((item) => {
@@ -234,6 +256,7 @@ const folderHint = computed(() => {
 });
 
 onMounted(async () => {
+  await refreshImageProcessingSupport();
   try {
     status.value = await apiFetch('/api/status');
     const first = modes.value.find((item) => item.available);
@@ -276,6 +299,9 @@ function enqueueFiles(files) {
       progress: 0,
       status: 'pending',
       error: '',
+      imageProcessingOptions: getImageProcessingSnapshot(),
+      imageProcessingPrepared: false,
+      optimizationNote: '',
     });
   }
   void processQueue();
@@ -295,10 +321,12 @@ async function processQueue() {
         item.error = 'Selected storage is unavailable. Open Storage/Status to configure it.';
         continue;
       }
-      item.status = 'uploading';
       item.error = '';
 
       try {
+        await prepareQueuedImage(item);
+        item.status = 'uploading';
+
         const link = item.file.size > SMALL_FILE_THRESHOLD
           ? await chunkUpload(item)
           : await directUpload(item);

@@ -524,6 +524,119 @@ textarea {
   margin: 6px 0 0;
 }
 
+.image-processing {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  background: linear-gradient(135deg, #ffffff, #f8fafc);
+}
+
+.image-processing.enabled {
+  border-color: #cbd5e1;
+}
+
+.image-processing-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.switch-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.switch-control input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switch-track {
+  width: 46px;
+  height: 26px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #dbe3ec;
+  border: 1px solid #cbd5e1;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.switch-thumb {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18);
+  transition: transform 0.18s ease;
+}
+
+.switch-control input:checked + .switch-track {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.switch-control input:checked + .switch-track .switch-thumb {
+  transform: translateX(20px);
+}
+
+.switch-control input:focus-visible + .switch-track {
+  outline: 2px solid rgba(31, 41, 55, 0.26);
+  outline-offset: 2px;
+}
+
+.image-processing-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.3fr) minmax(180px, 1fr) minmax(150px, 0.7fr) minmax(220px, 1fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.image-processing-field {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.image-processing-field > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.image-processing-field input[type="range"] {
+  padding: 0;
+  border: 0;
+  accent-color: var(--accent);
+}
+
+.format-segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inline-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.inline-check input {
+  width: auto;
+}
+
 .storage-panel {
   display: grid;
   gap: 14px;
@@ -927,6 +1040,14 @@ textarea {
   }
 
   .target-directory-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .image-processing-head {
+    align-items: flex-start;
+  }
+
+  .image-processing-grid {
     grid-template-columns: 1fr;
   }
 
