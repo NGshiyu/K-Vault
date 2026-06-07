@@ -1,0 +1,6 @@
+interface:
+  display_name: "K Vault"
+  short_description: "Repo-specific patterns and workflows for K-Vault"
+  default_prompt: "Use the K-Vault repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
