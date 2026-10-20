@@ -1220,9 +1220,11 @@
       }
 
       .result-item-link {
+        display: block;
         font-size: 0.8em;
         color: var(--primary-color);
         margin-top: 4px;
+        text-decoration: none;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -2970,7 +2972,7 @@
             <div
               class="result-item"
               v-for="(file, index) in uploadedFiles"
-              :key="index"
+              :key="file.path + ':' + file.uploadTime"
               :class="{ selected: file.selected }"
             >
               <input
@@ -2986,13 +2988,15 @@
               />
               <div class="result-item-info">
                 <div class="result-item-name">{{ getDisplayName(file) }}</div>
-                <div
+                <a
                   class="result-item-link"
-                  @click="copyLink(file)"
+                  :href="getCleanFileUrl(file)"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   :title="formatLink(file)"
                 >
                   {{ formatLink(file) }}
-                </div>
+                </a>
               </div>
               <div class="result-item-actions">
                 <button
