@@ -254,7 +254,7 @@ This project supports switching the Telegram API base URL to a self-hosted Bot A
 | Variable | Description | Example |
 | :--- | :--- | :--- |
 | `CUSTOM_BOT_API_URL` | Self-hosted Bot API URL (defaults to `https://api.telegram.org` if not set) | `http://127.0.0.1:8081` |
-| `PUBLIC_BASE_URL` | Public domain used for Webhook backlink replies (recommended) | `https://img.example.com` |
+| `PUBLIC_BASE_URL` | Public domain for Webhook replies and, when selected on the upload page, returned file links | `https://img.example.com` |
 | `TG_WEBHOOK_SECRET` | Webhook secret, verified by header `X-Telegram-Bot-Api-Secret-Token` | `your-secret` |
 | `TELEGRAM_LINK_MODE` | Telegram link mode; set `signed` to enable signed direct links | `signed` |
 | `MINIMIZE_KV_WRITES` | Set `true` to enable low-KV-write mode (also enables signed direct links) | `true` |

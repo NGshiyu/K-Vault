@@ -270,7 +270,7 @@ curl -i -X POST "http://localhost:8080/api/auth/login" \
 | 变量名 | 说明 | 示例 |
 | :--- | :--- | :--- |
 | `CUSTOM_BOT_API_URL` | 自部署 Bot API 地址（不填则默认 `https://api.telegram.org`） | `http://127.0.0.1:8081` |
-| `PUBLIC_BASE_URL` | Webhook 回链时使用的公网域名（建议填写） | `https://img.example.com` |
+| `PUBLIC_BASE_URL` | Webhook 回链域名；上传页勾选“使用 PUBLIC_BASE_URL 公共域名返回结果”后也用于文件链接 | `https://img.example.com` |
 | `TG_WEBHOOK_SECRET` | Webhook 密钥，校验头 `X-Telegram-Bot-Api-Secret-Token` | `your-secret` |
 | `TELEGRAM_LINK_MODE` | Telegram 链接模式，设为 `signed` 启用签名直链 | `signed` |
 | `MINIMIZE_KV_WRITES` | 设为 `true` 时启用低 KV 写入策略（也会启用签名直链） | `true` |
