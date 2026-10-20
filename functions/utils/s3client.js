@@ -258,7 +258,14 @@ export class S3Client {
             headers: signedHeaders
         });
 
-        return response.ok;
+        if (!response.ok) {
+            // Only expose the S3 error code, never the upstream message or signed request.
+            const body = await response.text().catch(() => '');
+            const code = body.match(/<Code>\s*([A-Za-z][A-Za-z0-9]{0,63})\s*<\/Code>/i)?.[1];
+            throw new Error(`S3 check failed (HTTP ${response.status}${code ? `: ${code}` : ''})`);
+        }
+
+        return true;
     }
 }
 
