@@ -4019,6 +4019,7 @@
               return;
             }
 
+            const usedPublicBaseUrl = this.usePublicBaseUrl && Boolean(this.publicBaseUrl);
             const linkBaseURL = this.getSelectedLinkBaseURL();
             this.urlUploading = true;
             try {
@@ -4056,6 +4057,7 @@
                   fileName: fileName,
                   url: `${linkBaseURL}${src}`,
                   linkBaseURL,
+                  usedPublicBaseUrl,
                   path: src,
                   size: 0, // URL上传无法预知大小
                   selected: false,
@@ -4078,11 +4080,13 @@
           },
 
           createUploadContext() {
+            const usedPublicBaseUrl = this.usePublicBaseUrl && Boolean(this.publicBaseUrl);
             return {
               storageMode: this.storageMode,
               storageTarget: this.storageTarget,
               folderPath: this.normalizeFolderPath(this.folderPath),
               linkBaseURL: this.getSelectedLinkBaseURL(),
+              usedPublicBaseUrl,
             };
           },
 
@@ -4684,6 +4688,7 @@
                 storageTarget: context.storageTarget,
                 folderPath: context.folderPath,
                 linkBaseURL: context.linkBaseURL,
+                usedPublicBaseUrl: context.usedPublicBaseUrl,
                 isChunked: false,
               };
 
@@ -4885,12 +4890,16 @@
 
           // 处理上传成功
           handleUploadSuccess(item, src) {
-            const linkBaseURL = item.linkBaseURL || this.baseURL;
+            const usedPublicBaseUrl = item.usedPublicBaseUrl === true;
+            const linkBaseURL = usedPublicBaseUrl
+              ? item.linkBaseURL || this.baseURL
+              : this.baseURL;
             const uploadedFile = {
               name: item.file.name, // 原始文件名
               fileName: item.file.name, // 保存原始文件名用于显示
               url: `${linkBaseURL}${src}`,
               linkBaseURL,
+              usedPublicBaseUrl,
               path: src,
               size: item.file.size,
               selected: false,
@@ -5205,7 +5214,7 @@
           // 从 ID、路径或完整 URL 生成该文件上传时选定域名的直链
           getCleanFileUrl(item) {
             let rawUrl = item.url || item.path || "";
-            const linkBaseURL = this.getStoredLinkBaseURL(rawUrl, item.linkBaseURL);
+            const linkBaseURL = this.getStoredLinkBaseURL(item.linkBaseURL, item.usedPublicBaseUrl);
 
             // 情况1: 已经是完整的 /file/ 直链
             if (rawUrl.startsWith("https://") && rawUrl.includes("/file/")) {
@@ -5238,11 +5247,11 @@
             return rawUrl;
           },
 
-          getStoredLinkBaseURL(url, selectedBaseURL) {
-            if (selectedBaseURL) return selectedBaseURL;
+          getStoredLinkBaseURL(selectedBaseURL, usedPublicBaseUrl) {
+            if (usedPublicBaseUrl === false || !selectedBaseURL) return this.baseURL;
             try {
-              const parsed = new URL(url);
-              if (parsed.protocol === "https:" && parsed.pathname.startsWith("/file/")) {
+              const parsed = new URL(selectedBaseURL);
+              if (["http:", "https:"].includes(parsed.protocol) && !parsed.username && !parsed.password) {
                 return parsed.origin;
               }
             } catch (e) {}
@@ -5402,10 +5411,20 @@
                 this.uploadHistory = JSON.parse(history).map((h) => {
                   let item = { ...h, selected: false };
 
+                  // 旧记录没有显式标记时，只能根据当时保存的选定域名迁移。
+                  // 没有 linkBaseURL 的记录按未勾选处理，不从 URL 猜测用户选择。
+                  if (typeof item.usedPublicBaseUrl !== "boolean") {
+                    item.usedPublicBaseUrl = Boolean(
+                      item.linkBaseURL &&
+                      this.getStoredLinkBaseURL(item.linkBaseURL, true) !== this.baseURL,
+                    );
+                    needsSave = true;
+                  }
+
                   // === 1. 修复污染的 URL 字段 ===
                   // 检查 URL 是否被污染（如 /file/https://... 或重复的域名）
                   if (item.url) {
-                    const cleanUrl = this.cleanUrlField(item.url, item.linkBaseURL);
+                    const cleanUrl = this.cleanUrlField(item.url, item.linkBaseURL, item.usedPublicBaseUrl);
                     if (cleanUrl !== item.url) {
                       item.url = cleanUrl;
                       needsSave = true;
@@ -5457,9 +5476,9 @@
           },
 
           // 清理污染的 URL 字段
-          cleanUrlField(url, selectedBaseURL) {
+          cleanUrlField(url, selectedBaseURL, usedPublicBaseUrl) {
             if (!url) return url;
-            const linkBaseURL = this.getStoredLinkBaseURL(url, selectedBaseURL);
+            const linkBaseURL = this.getStoredLinkBaseURL(selectedBaseURL, usedPublicBaseUrl);
 
             // 情况1: /file/https://pan.katelya.eu.org/file/xxx.ext
             // 或 /file/https://... 这种污染格式

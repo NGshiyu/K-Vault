@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function loadUploadPage(savedHistory = []) {
+function loadUploadPage(savedHistory = [], fetchImpl) {
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const script = html.match(/<script>\s*(const LOCAL_PREVIEW_PAGE[\s\S]*?)<\/script>/);
   assert.ok(script, 'upload page script should exist');
@@ -12,19 +12,18 @@ function loadUploadPage(savedHistory = []) {
   vm.runInNewContext(script[1], {
     URL,
     document: { location: { origin: 'https://site-a.example' } },
+    fetch: fetchImpl,
     localStorage: {
       getItem(key) { return storage.get(key) || null; },
       setItem(key, value) { storage.set(key, value); },
     },
     Vue: function Vue(config) { options = config; },
   });
-  return Object.assign({}, options.data, options.methods, {
-    addToHistory() {},
-  });
+  return Object.assign({}, options.data, options.methods);
 }
 
 describe('Upload result public domain option', function () {
-  it('keeps the saved public origin when formatting an absolute file URL', function () {
+  it('uses the current site for an old URL with no checkbox selection metadata', function () {
     const page = loadUploadPage();
     const savedFile = {
       name: 'picture.jpg',
@@ -33,7 +32,7 @@ describe('Upload result public domain option', function () {
     };
     page.uploadedFiles.push(savedFile);
 
-    assert.equal(page.formatLink(savedFile), 'https://images-b.example/file/r2:r2_picture.jpg');
+    assert.equal(page.formatLink(savedFile), 'https://site-a.example/file/r2:r2_picture.jpg');
     assert.equal(page.getBatchLinks(), page.formatLink(savedFile));
   });
 
@@ -47,6 +46,7 @@ describe('Upload result public domain option', function () {
     }]);
 
     page.loadHistory();
+    assert.equal(page.uploadHistory[0].usedPublicBaseUrl, true);
     assert.equal(page.uploadHistory[0].url, 'https://images-b.example/file/r2:r2_picture.jpg');
     assert.equal(page.formatLink(page.uploadHistory[0]), page.uploadHistory[0].url);
   });
@@ -60,8 +60,11 @@ describe('Upload result public domain option', function () {
     const selectedItem = {
       file: { name: 'picture.jpg', size: 123 },
       linkBaseURL: selectedContext.linkBaseURL,
+      usedPublicBaseUrl: selectedContext.usedPublicBaseUrl,
     };
     page.handleUploadSuccess(selectedItem, '/file/r2:r2_picture.jpg');
+    assert.equal(page.uploadedFiles[0].usedPublicBaseUrl, true);
+    assert.equal(page.uploadHistory[0].usedPublicBaseUrl, true);
     assert.equal(page.formatLink(page.uploadedFiles[0]), 'https://images-b.example/file/r2:r2_picture.jpg');
 
     page.usePublicBaseUrl = false;
@@ -69,10 +72,49 @@ describe('Upload result public domain option', function () {
     const defaultItem = {
       file: { name: 'other.jpg', size: 456 },
       linkBaseURL: defaultContext.linkBaseURL,
+      usedPublicBaseUrl: defaultContext.usedPublicBaseUrl,
     };
     page.handleUploadSuccess(defaultItem, '/file/r2:r2_other.jpg');
+    assert.equal(page.uploadedFiles[0].usedPublicBaseUrl, false);
+    assert.equal(page.uploadHistory[0].usedPublicBaseUrl, false);
     assert.equal(page.formatLink(page.uploadedFiles[0]), 'https://site-a.example/file/r2:r2_other.jpg');
     assert.equal(page.formatLink(page.uploadedFiles[1]), 'https://images-b.example/file/r2:r2_picture.jpg');
+    page.loadHistory();
+    assert.equal(page.uploadHistory[0].usedPublicBaseUrl, false);
+    assert.equal(page.formatLink(page.uploadHistory[0]), 'https://site-a.example/file/r2:r2_other.jpg');
+    assert.equal(page.uploadHistory[1].usedPublicBaseUrl, true);
+    assert.equal(page.formatLink(page.uploadHistory[1]), 'https://images-b.example/file/r2:r2_picture.jpg');
+  });
+
+  it('keeps an unchecked upload on the current site even if a public URL is configured', function () {
+    const page = loadUploadPage();
+    page.publicBaseUrl = 'https://images-b.example';
+    page.usePublicBaseUrl = false;
+    const context = page.createUploadContext();
+    assert.equal(context.usedPublicBaseUrl, false);
+    page.handleUploadSuccess({
+      file: { name: 'unchecked.jpg', size: 1 },
+      linkBaseURL: 'https://images-b.example',
+      usedPublicBaseUrl: context.usedPublicBaseUrl,
+    }, '/file/unchecked.jpg');
+    assert.equal(page.formatLink(page.uploadedFiles[0]), 'https://site-a.example/file/unchecked.jpg');
+  });
+
+  it('freezes the checkbox choice before a URL upload request finishes', async function () {
+    let finishRequest;
+    const page = loadUploadPage([], () => new Promise(resolve => { finishRequest = resolve; }));
+    page.showToast = () => {};
+    page.urlToUpload = 'https://source.example/photo.jpg';
+    page.publicBaseUrl = 'https://images-b.example';
+    page.usePublicBaseUrl = true;
+
+    const pending = page.uploadFromUrl();
+    page.usePublicBaseUrl = false;
+    finishRequest({ ok: true, json: async () => [{ src: '/file/photo.jpg' }] });
+    await pending;
+
+    assert.equal(page.uploadedFiles[0].usedPublicBaseUrl, true);
+    assert.equal(page.formatLink(page.uploadedFiles[0]), 'https://images-b.example/file/photo.jpg');
   });
 
   it('disables the public domain choice when no valid URL is configured', async function () {
