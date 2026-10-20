@@ -3,13 +3,19 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function loadUploadPage() {
+function loadUploadPage(savedHistory = []) {
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const script = html.match(/<script>\s*(const LOCAL_PREVIEW_PAGE[\s\S]*?)<\/script>/);
   assert.ok(script, 'upload page script should exist');
   let options;
+  const storage = new Map([['uploadHistory', JSON.stringify(savedHistory)]]);
   vm.runInNewContext(script[1], {
+    URL,
     document: { location: { origin: 'https://site-a.example' } },
+    localStorage: {
+      getItem(key) { return storage.get(key) || null; },
+      setItem(key, value) { storage.set(key, value); },
+    },
     Vue: function Vue(config) { options = config; },
   });
   return Object.assign({}, options.data, options.methods, {
@@ -18,6 +24,33 @@ function loadUploadPage() {
 }
 
 describe('Upload result public domain option', function () {
+  it('keeps the saved public origin when formatting an absolute file URL', function () {
+    const page = loadUploadPage();
+    const savedFile = {
+      name: 'picture.jpg',
+      url: 'https://images-b.example/file/r2:r2_picture.jpg',
+      path: '/file/r2:r2_picture.jpg',
+    };
+    page.uploadedFiles.push(savedFile);
+
+    assert.equal(page.formatLink(savedFile), 'https://images-b.example/file/r2:r2_picture.jpg');
+    assert.equal(page.getBatchLinks(), page.formatLink(savedFile));
+  });
+
+  it('repairs saved history using its selected public domain', function () {
+    const page = loadUploadPage([{
+      name: 'picture.jpg',
+      fileName: 'picture.jpg',
+      url: 'https://site-a.example/file/r2:r2_picture.jpg',
+      path: '/file/r2:r2_picture.jpg',
+      linkBaseURL: 'https://images-b.example',
+    }]);
+
+    page.loadHistory();
+    assert.equal(page.uploadHistory[0].url, 'https://images-b.example/file/r2:r2_picture.jpg');
+    assert.equal(page.formatLink(page.uploadHistory[0]), page.uploadHistory[0].url);
+  });
+
   it('uses PUBLIC_BASE_URL only for results uploaded with the checkbox selected', function () {
     const page = loadUploadPage();
     page.publicBaseUrl = 'https://images-b.example';
