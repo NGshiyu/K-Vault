@@ -941,6 +941,39 @@
         accent-color: var(--primary-color);
       }
 
+      .public-base-option {
+        margin-top: 16px;
+        padding: 14px 18px;
+        border: 1px solid var(--surface-border);
+        border-radius: 14px;
+        background: var(--surface-1);
+        color: var(--text-primary);
+      }
+
+      .public-base-option label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .public-base-option input {
+        accent-color: var(--primary-color);
+      }
+
+      .public-base-option label.is-disabled {
+        cursor: not-allowed;
+        opacity: 0.65;
+      }
+
+      .public-base-option p {
+        margin: 6px 0 0 25px;
+        color: var(--text-muted);
+        font-size: 0.85em;
+        overflow-wrap: anywhere;
+      }
+
       .upload-item-compression {
         color: var(--primary-color);
         font-size: 0.75em;
@@ -2520,6 +2553,15 @@
             </div>
           </div>
 
+          <div class="public-base-option">
+            <label :class="{ 'is-disabled': !publicBaseUrl }">
+              <input type="checkbox" v-model="usePublicBaseUrl" :disabled="!publicBaseUrl" />
+              <span>使用 PUBLIC_BASE_URL 公共域名返回结果</span>
+            </label>
+            <p v-if="publicBaseUrl">上传成功后的链接使用 {{ publicBaseUrl }}；上传请求仍发送到当前站点。</p>
+            <p v-else>未配置有效的 PUBLIC_BASE_URL，链接将使用当前网页域名。</p>
+          </div>
+
           <!-- 上传方式按钮 -->
           <div class="folder-target-panel">
             <div class="folder-target-head">
@@ -3376,6 +3418,8 @@
         el: "#app",
         data: {
           baseURL: document.location.origin,
+          publicBaseUrl: "",
+          usePublicBaseUrl: false,
           isDragging: false,
           showUrlInput: false,
           urlToUpload: "",
@@ -3975,6 +4019,7 @@
               return;
             }
 
+            const linkBaseURL = this.getSelectedLinkBaseURL();
             this.urlUploading = true;
             try {
               // 调用后端代理API，由服务器端获取外部URL内容（无CORS限制）
@@ -4009,7 +4054,8 @@
                 const uploadedFile = {
                   name: fileName,
                   fileName: fileName,
-                  url: `${this.baseURL}${src}`,
+                  url: `${linkBaseURL}${src}`,
+                  linkBaseURL,
                   path: src,
                   size: 0, // URL上传无法预知大小
                   selected: false,
@@ -4036,7 +4082,14 @@
               storageMode: this.storageMode,
               storageTarget: this.storageTarget,
               folderPath: this.normalizeFolderPath(this.folderPath),
+              linkBaseURL: this.getSelectedLinkBaseURL(),
             };
+          },
+
+          getSelectedLinkBaseURL() {
+            return this.usePublicBaseUrl && this.publicBaseUrl
+              ? this.publicBaseUrl
+              : this.baseURL;
           },
 
           getImageFormatConfig(format) {
@@ -4630,6 +4683,7 @@
                 storageMode: context.storageMode,
                 storageTarget: context.storageTarget,
                 folderPath: context.folderPath,
+                linkBaseURL: context.linkBaseURL,
                 isChunked: false,
               };
 
@@ -4831,10 +4885,12 @@
 
           // 处理上传成功
           handleUploadSuccess(item, src) {
+            const linkBaseURL = item.linkBaseURL || this.baseURL;
             const uploadedFile = {
               name: item.file.name, // 原始文件名
               fileName: item.file.name, // 保存原始文件名用于显示
-              url: `${this.baseURL}${src}`,
+              url: `${linkBaseURL}${src}`,
+              linkBaseURL,
               path: src,
               size: item.file.size,
               selected: false,
@@ -5146,36 +5202,36 @@
             return "未知文件";
           },
 
-          // 核心方法：从污染的 URL 中提取干净的文件直链
-          // 无论输入是 ID、路径、还是完整 URL，都返回标准格式：https://pan.katelya.eu.org/file/{id}.{ext}
+          // 从 ID、路径或完整 URL 生成该文件上传时选定域名的直链
           getCleanFileUrl(item) {
             let rawUrl = item.url || item.path || "";
+            const linkBaseURL = item.linkBaseURL || this.baseURL;
 
-            // 情况1: 已经是标准直链格式 https://pan.katelya.eu.org/file/xxx.ext
+            // 情况1: 已经是完整的 /file/ 直链
             if (rawUrl.startsWith("https://") && rawUrl.includes("/file/")) {
               // 提取 /file/ 后面的部分作为 fileId
               const match = rawUrl.match(/\/file\/([^?#]+)/);
               if (match) {
                 const fileId = match[1];
-                return `${this.baseURL}/file/${fileId}`;
+                return `${linkBaseURL}/file/${fileId}`;
               }
             }
 
             // 情况2: 相对路径格式 /file/xxx.ext
             if (rawUrl.startsWith("/file/")) {
-              return `${this.baseURL}${rawUrl}`;
+              return `${linkBaseURL}${rawUrl}`;
             }
 
             // 情况3: 只有 fileId（如 BQACAg...ext）
             if (rawUrl && !rawUrl.includes("/") && !rawUrl.includes("://")) {
-              return `${this.baseURL}/file/${rawUrl}`;
+              return `${linkBaseURL}/file/${rawUrl}`;
             }
 
             // 情况4: 污染的 URL（如 /file/https://... 或其他异常格式）
             // 尝试提取最后的文件ID部分
             const lastSegment = rawUrl.split("/").pop().split("?")[0];
             if (lastSegment && lastSegment.includes(".")) {
-              return `${this.baseURL}/file/${lastSegment}`;
+              return `${linkBaseURL}/file/${lastSegment}`;
             }
 
             // 兜底：返回原始 URL
@@ -5622,6 +5678,8 @@
               });
               const status = await response.json();
               this.uploadLimits = status.uploadLimits || {};
+              this.publicBaseUrl = status.publicBaseUrl || "";
+              if (!this.publicBaseUrl) this.usePublicBaseUrl = false;
 
               // 检查各存储后端是否可用
               this.r2Available = this.storageEnabledFromStatus(status.r2);
@@ -5675,6 +5733,8 @@
               this.storageMode = "telegram";
               this.storageTarget = "Telegram 频道";
               this.uploadLimits = {};
+              this.publicBaseUrl = "";
+              this.usePublicBaseUrl = false;
               this.r2Available = false;
               this.s3Available = false;
               this.discordAvailable = false;

@@ -31,8 +31,18 @@ function storageCapability(type, label, layer = 'direct') {
 
 export async function onRequestGet(context) {
   const { env } = context;
+  let publicBaseUrl = '';
+  try {
+    const url = new URL(String(env.PUBLIC_BASE_URL || '').trim());
+    if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) {
+      publicBaseUrl = url.origin;
+    }
+  } catch (_) {
+    // Leave the option unavailable when PUBLIC_BASE_URL is missing or invalid.
+  }
 
   const status = {
+    publicBaseUrl,
     telegram: defaultStatusItem({ layer: 'direct' }),
     kv: { connected: false, enabled: false, configured: false, layer: 'direct', message: 'Not configured' },
     r2: defaultStatusItem({ layer: 'direct' }),
