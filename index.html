@@ -5205,7 +5205,7 @@
           // 从 ID、路径或完整 URL 生成该文件上传时选定域名的直链
           getCleanFileUrl(item) {
             let rawUrl = item.url || item.path || "";
-            const linkBaseURL = item.linkBaseURL || this.baseURL;
+            const linkBaseURL = this.getStoredLinkBaseURL(rawUrl, item.linkBaseURL);
 
             // 情况1: 已经是完整的 /file/ 直链
             if (rawUrl.startsWith("https://") && rawUrl.includes("/file/")) {
@@ -5236,6 +5236,17 @@
 
             // 兜底：返回原始 URL
             return rawUrl;
+          },
+
+          getStoredLinkBaseURL(url, selectedBaseURL) {
+            if (selectedBaseURL) return selectedBaseURL;
+            try {
+              const parsed = new URL(url);
+              if (parsed.protocol === "https:" && parsed.pathname.startsWith("/file/")) {
+                return parsed.origin;
+              }
+            } catch (e) {}
+            return this.baseURL;
           },
 
           // 从 URL 中提取干净的文件路径（不带域名，格式：/file/xxx.ext）
@@ -5394,7 +5405,7 @@
                   // === 1. 修复污染的 URL 字段 ===
                   // 检查 URL 是否被污染（如 /file/https://... 或重复的域名）
                   if (item.url) {
-                    const cleanUrl = this.cleanUrlField(item.url);
+                    const cleanUrl = this.cleanUrlField(item.url, item.linkBaseURL);
                     if (cleanUrl !== item.url) {
                       item.url = cleanUrl;
                       needsSave = true;
@@ -5446,8 +5457,9 @@
           },
 
           // 清理污染的 URL 字段
-          cleanUrlField(url) {
+          cleanUrlField(url, selectedBaseURL) {
             if (!url) return url;
+            const linkBaseURL = this.getStoredLinkBaseURL(url, selectedBaseURL);
 
             // 情况1: /file/https://pan.katelya.eu.org/file/xxx.ext
             // 或 /file/https://... 这种污染格式
@@ -5460,7 +5472,7 @@
                 /\/file\/([^\/?#]+\.[a-zA-Z0-9]+)(?:[?#].*)?$/,
               );
               if (match) {
-                return `${this.baseURL}/file/${match[1]}`;
+                return `${linkBaseURL}/file/${match[1]}`;
               }
             }
 
@@ -5471,21 +5483,21 @@
               if (lastUrl) {
                 // 从中提取 fileId
                 const fileId = lastUrl[1].split("/file/").pop();
-                return `${this.baseURL}/file/${fileId}`;
+                return `${linkBaseURL}/file/${fileId}`;
               }
             }
 
-            // 情况3: 正常的完整 URL，确保使用当前域名
+            // 情况3: 正常的完整 URL，保留上传时选定的域名
             if (url.startsWith("https://") && url.includes("/file/")) {
               const match = url.match(/\/file\/([^?#]+)/);
               if (match) {
-                return `${this.baseURL}/file/${match[1]}`;
+                return `${linkBaseURL}/file/${match[1]}`;
               }
             }
 
             // 情况4: 相对路径，补全域名
             if (url.startsWith("/file/")) {
-              return `${this.baseURL}${url}`;
+              return `${linkBaseURL}${url}`;
             }
 
             return url;
